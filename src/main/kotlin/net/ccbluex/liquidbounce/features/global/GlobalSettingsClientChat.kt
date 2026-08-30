@@ -39,8 +39,9 @@ import net.ccbluex.liquidbounce.event.tickHandler
 import net.ccbluex.liquidbounce.features.chat.AxochatClient
 import net.ccbluex.liquidbounce.features.chat.packet.C2SRequestJWTPacket
 import net.ccbluex.liquidbounce.features.command.CommandManager
-import net.ccbluex.liquidbounce.features.command.builder.CommandBuilder
-import net.ccbluex.liquidbounce.features.command.builder.ParameterBuilder
+import net.ccbluex.liquidbounce.features.command.brigadier.ClientCommandSource
+import net.ccbluex.liquidbounce.features.command.brigadier.get
+import net.ccbluex.liquidbounce.features.command.brigadier.register
 import net.ccbluex.liquidbounce.features.misc.HideAppearance.isDestructed
 import net.ccbluex.liquidbounce.lang.translation
 import net.ccbluex.liquidbounce.utils.client.MessageMetadata
@@ -66,6 +67,8 @@ import net.minecraft.network.chat.Style
 import net.minecraft.network.chat.contents.ObjectContents
 import net.minecraft.network.chat.contents.objects.PlayerSprite
 import net.minecraft.world.item.component.ResolvableProfile
+import com.mojang.brigadier.CommandDispatcher
+import com.mojang.brigadier.arguments.StringArgumentType
 import kotlin.time.Duration.Companion.seconds
 
 object GlobalSettingsClientChat : ToggleableValueGroup(
@@ -87,59 +90,57 @@ object GlobalSettingsClientChat : ToggleableValueGroup(
     private val exceptionData = MessageMetadata(prefix = false, id = "LiquidChat#exception")
     private val messageData = MessageMetadata(prefix = false)
 
-    private fun createChatWriteCommand() = CommandBuilder
-        .begin("chat")
-        .parameter(
-            ParameterBuilder
-                .begin<String>("message")
-                .verifiedBy(ParameterBuilder.STRING_VALIDATOR)
-                .required()
-                .vararg()
-                .build()
-        )
-        .handler {
-            if (!chatClient.isConnected) {
-                chat(
-                    prefix, translation("liquidbounce.liquidchat.notConnected").withStyle(ChatFormatting.GRAY),
-                    metadata = exceptionData
-                )
-                return@handler
-            }
+    private fun registerChatWriteCommand(dispatcher: CommandDispatcher<ClientCommandSource>) {
+        dispatcher.register("chat") {
+            argument("message", StringArgumentType.greedyString()) { message ->
+                execSuspend { ctx ->
+                    if (!chatClient.isConnected) {
+                        chat(
+                            prefix,
+                            translation("liquidbounce.liquidchat.notConnected").withStyle(ChatFormatting.GRAY),
+                            metadata = exceptionData
+                        )
+                        return@execSuspend
+                    }
 
-            if (!chatClient.isLoggedIn) {
-                chat(
-                    prefix, translation("liquidbounce.liquidchat.notLoggedIn").withStyle(ChatFormatting.GRAY),
-                    metadata = exceptionData
-                )
-                return@handler
-            }
+                    if (!chatClient.isLoggedIn) {
+                        chat(
+                            prefix,
+                            translation("liquidbounce.liquidchat.notLoggedIn").withStyle(ChatFormatting.GRAY),
+                            metadata = exceptionData
+                        )
+                        return@execSuspend
+                    }
 
-            chatClient.sendMessage((args[0] as Array<*>).joinToString(" ") { it as String })
+                    chatClient.sendMessage(ctx.get(message))
+                }
+            }
         }
-        .build()
+    }
 
-    private fun createChatJwtCommand() = CommandBuilder
-        .begin("chatjwt")
-        .handler {
-            if (!chatClient.isConnected) {
+    private fun registerChatJwtCommand(dispatcher: CommandDispatcher<ClientCommandSource>) {
+        dispatcher.register("chatjwt") {
+            execSuspend {
+                if (!chatClient.isConnected) {
+                    chat(
+                        prefix, translation("liquidbounce.liquidchat.notConnected").withStyle(ChatFormatting.GRAY),
+                        metadata = exceptionData
+                    )
+                    return@execSuspend
+                }
+
+                chatClient.sendPacket(C2SRequestJWTPacket())
                 chat(
-                    prefix, translation("liquidbounce.liquidchat.notConnected").withStyle(ChatFormatting.GRAY),
+                    prefix, translation("liquidbounce.liquidchat.jwtTokenRequested").withStyle(ChatFormatting.GRAY),
                     metadata = exceptionData
                 )
-                return@handler
             }
-
-            chatClient.sendPacket(C2SRequestJWTPacket())
-            chat(
-                prefix, translation("liquidbounce.liquidchat.jwtTokenRequested").withStyle(ChatFormatting.GRAY),
-                metadata = exceptionData
-            )
         }
-        .build()
+    }
 
     init {
-        CommandManager.addCommand(createChatWriteCommand())
-        CommandManager.addCommand(createChatJwtCommand())
+        CommandManager.register(::registerChatWriteCommand)
+        CommandManager.register(::registerChatJwtCommand)
     }
 
     override fun onEnabled() {
@@ -175,7 +176,7 @@ object GlobalSettingsClientChat : ToggleableValueGroup(
     @Suppress("unused")
     private val handleChatMessage = suspendHandler<ClientChatMessageEvent> { event ->
         val resolvableProfile = ResolvableProfile.createUnresolved(event.user.uuid)
-        withTimeoutOrNull(5000L) {
+        withTimeoutOrNull(5.seconds) {
             resolvableProfile.resolveProfile(mc.services().profileResolver).await()
         }
 
@@ -227,7 +228,7 @@ object GlobalSettingsClientChat : ToggleableValueGroup(
     }
 
     @Suppress("unused")
-    private val handleStateChange = handler<ClientChatStateChange> {
+    private val handleStateChange = suspendHandler<ClientChatStateChange>(behavior = CancelPrevious) {
         when (it.state) {
             ClientChatStateChange.State.CONNECTED -> {
                 notification(

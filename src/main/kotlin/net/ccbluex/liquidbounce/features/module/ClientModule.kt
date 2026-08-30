@@ -68,8 +68,17 @@ open class ClientModule(
 
     protected val logger = clientLogger("Module/$name")
 
+    init {
+        category.inclusionGroup?.let { group ->
+            this.inclusionGroup(group)
+        }
+    }
+
     override val debugDisplayName: Component
         get() = this.name.asPlainText(Style.EMPTY + ChatFormatting.GOLD + ChatFormatting.BOLD)
+
+    override val debugOwnerId: String
+        get() = "Module$name"
 
     /**
      * If a module is running or not is separated from the enabled state. A module can be paused even when

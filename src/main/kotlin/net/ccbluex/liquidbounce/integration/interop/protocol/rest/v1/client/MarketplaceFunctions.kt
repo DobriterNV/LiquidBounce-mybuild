@@ -20,6 +20,13 @@
 package net.ccbluex.liquidbounce.integration.interop.protocol.rest.v1.client
 
 import com.google.gson.JsonObject
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
 import net.ccbluex.liquidbounce.api.models.auth.ClientAccount.Companion.EMPTY_ACCOUNT
 import net.ccbluex.liquidbounce.api.models.marketplace.MarketplaceItemStatus
 import net.ccbluex.liquidbounce.api.models.marketplace.MarketplaceItemType
@@ -27,17 +34,24 @@ import net.ccbluex.liquidbounce.api.services.marketplace.MarketplaceApi
 import net.ccbluex.liquidbounce.config.gson.interopGson
 import net.ccbluex.liquidbounce.features.cosmetic.ClientAccountManager
 import net.ccbluex.liquidbounce.features.marketplace.MarketplaceManager
+import net.ccbluex.liquidbounce.integration.interop.forbidden
 import net.ccbluex.liquidbounce.utils.client.logger
-import net.ccbluex.netty.http.routing.Routing
 
 /**
- * GET /api/v1/marketplace
+ * Extract a required integer path parameter or respond with 403 Forbidden
+ */
+private suspend fun ApplicationCall.requireId(parameter: String = "id"): Int {
+    return parameters[parameter]?.toIntOrNull() ?: this.forbidden("Invalid $parameter: ${parameters[parameter]}")
+}
+
+/**
+ * GET /api/v1/client/marketplace
  *
  * Lists marketplace items with optional filtering
  */
-private fun Routing.getMarketplaceItems() = get {
-    val page = call.queryParameters.getOrDefault("page", "1").toInt()
-    val limit = call.queryParameters.getOrDefault("limit", "12").toInt()
+private fun Route.getMarketplaceItems() = get {
+    val page = call.queryParameters["page"]?.toIntOrNull() ?: 1
+    val limit = call.queryParameters["limit"]?.toIntOrNull() ?: 12
     val query = call.queryParameters["query"]
     val typeStr = call.queryParameters["type"]
     val type = typeStr?.let { MarketplaceItemType.valueOf(it.uppercase()) }
@@ -59,10 +73,10 @@ private fun Routing.getMarketplaceItems() = get {
 }
 
 /**
- * GET /api/v1/marketplace/:id
+ * GET /api/v1/client/marketplace/{id}
  */
-private fun Routing.getMarketplaceItem() = get {
-    val id = call.parameters["id"]?.toIntOrNull() ?: call.forbidden("Invalid ID")
+private fun Route.getMarketplaceItem() = get {
+    val id = call.requireId()
 
     val item = MarketplaceApi.getMarketplaceItem(id)
     call.respond(JsonObject().apply {
@@ -73,34 +87,33 @@ private fun Routing.getMarketplaceItem() = get {
 }
 
 /**
- * GET /api/v1/marketplace/:id/revisions
+ * GET /api/v1/client/marketplace/{id}/revisions
  */
-private fun Routing.getMarketplaceItemRevisions() = get {
-    val id = call.parameters["id"]?.toIntOrNull() ?: call.forbidden("Invalid ID")
-    val page = call.queryParameters.getOrDefault("page", "1").toInt()
-    val limit = call.queryParameters.getOrDefault("limit", "10").toInt()
+private fun Route.getMarketplaceItemRevisions() = get {
+    val id = call.requireId()
+    val page = call.queryParameters["page"]?.toIntOrNull() ?: 1
+    val limit = call.queryParameters["limit"]?.toIntOrNull() ?: 10
 
     val response = MarketplaceApi.getMarketplaceItemRevisions(id, page, limit)
-    call.respond(response, interopGson)
+    call.respond(response)
 }
 
 /**
- * GET /api/v1/marketplace/:id/revisions/:revisionId
+ * GET /api/v1/client/marketplace/{id}/revisions/{revisionId}
  */
-private fun Routing.getMarketplaceItemRevision() = get("/:revisionId") {
-    val id = call.parameters["id"]?.toIntOrNull() ?: call.forbidden("Invalid ID")
-    val revisionId = call.parameters["revisionId"]?.toIntOrNull()
-        ?: call.forbidden("Invalid revision ID")
+private fun Route.getMarketplaceItemRevision() = get("/{revisionId}") {
+    val id = call.requireId()
+    val revisionId = call.requireId("revisionId")
 
     val response = MarketplaceApi.getMarketplaceItemRevision(id, revisionId)
-    call.respond(response, interopGson)
+    call.respond(response)
 }
 
 /**
- * POST /api/v1/marketplace/:id/subscribe
+ * POST /api/v1/client/marketplace/{id}/subscribe
  */
-private fun Routing.subscribeMarketplaceItem() = post("/subscribe") {
-    val id = call.parameters["id"]?.toIntOrNull() ?: call.forbidden("Invalid ID")
+private fun Route.subscribeMarketplaceItem() = post("/subscribe") {
+    val id = call.requireId()
 
     if (MarketplaceManager.isSubscribed(id)) {
         call.forbidden("Already subscribed")
@@ -119,7 +132,7 @@ private fun Routing.subscribeMarketplaceItem() = post("/subscribe") {
 
     try {
         MarketplaceManager.subscribe(item)
-        call.respondNoContent()
+        call.respond(io.ktor.http.HttpStatusCode.NoContent)
     } catch (e: Exception) {
         logger.error("Failed to subscribe to marketplace item", e)
         call.forbidden("Failed to subscribe: ${e.message}")
@@ -127,10 +140,10 @@ private fun Routing.subscribeMarketplaceItem() = post("/subscribe") {
 }
 
 /**
- * POST /api/v1/marketplace/:id/unsubscribe
+ * POST /api/v1/client/marketplace/{id}/unsubscribe
  */
-private fun Routing.unsubscribeMarketplaceItem() = post("/unsubscribe") {
-    val id = call.parameters["id"]?.toIntOrNull() ?: call.forbidden("Invalid ID")
+private fun Route.unsubscribeMarketplaceItem() = post("/unsubscribe") {
+    val id = call.requireId()
 
     if (!MarketplaceManager.isSubscribed(id)) {
         call.forbidden("Not subscribed")
@@ -138,7 +151,7 @@ private fun Routing.unsubscribeMarketplaceItem() = post("/unsubscribe") {
 
     try {
         MarketplaceManager.unsubscribe(id)
-        call.respondNoContent()
+        call.respond(io.ktor.http.HttpStatusCode.NoContent)
     } catch (e: Exception) {
         logger.error("Failed to unsubscribe from marketplace item", e)
         call.forbidden("Failed to unsubscribe: ${e.message}")
@@ -146,29 +159,28 @@ private fun Routing.unsubscribeMarketplaceItem() = post("/unsubscribe") {
 }
 
 /**
- * GET /api/v1/marketplace/:id/reviews
+ * GET /api/v1/client/marketplace/{id}/reviews
  */
-private fun Routing.getMarketplaceItemReviews() = get {
-    val id = call.parameters["id"]?.toIntOrNull() ?: call.forbidden("Invalid ID")
-    val page = call.queryParameters.getOrDefault("page", "1").toInt()
-    val limit = call.queryParameters.getOrDefault("limit", "10").toInt()
+private fun Route.getMarketplaceItemReviews() = get {
+    val id = call.requireId()
+    val page = call.queryParameters["page"]?.toIntOrNull() ?: 1
+    val limit = call.queryParameters["limit"]?.toIntOrNull() ?: 10
 
     val response = MarketplaceApi.getReviews(id, page, limit)
-    call.respond(response, interopGson)
+    call.respond(response)
 }
 
 /**
- * POST /api/v1/marketplace/:id/reviews
+ * POST /api/v1/client/marketplace/{id}/reviews
  */
-private fun Routing.postMarketplaceItemReview() = post {
+private fun Route.postMarketplaceItemReview() = post {
     data class MarketplaceReview(
         val rating: Int,
         val comment: String
     )
 
-    val id = call.parameters["id"]?.toIntOrNull() ?: call.forbidden("Invalid ID")
-    val review = call.body.let { interopGson.fromJson(it, MarketplaceReview::class.java) }
-        ?: call.forbidden("Invalid review data")
+    val id = call.requireId()
+    val review = call.receive<MarketplaceReview>()
 
     val clientAccount = ClientAccountManager.clientAccount
     if (clientAccount == EMPTY_ACCOUNT) {
@@ -176,12 +188,12 @@ private fun Routing.postMarketplaceItemReview() = post {
     }
 
     val response = MarketplaceApi.createReview(clientAccount.takeSession(), id, review.rating, review.comment)
-    call.respond(response, interopGson)
+    call.respond(response)
 }
 
-internal fun Routing.marketplaceRoutes() = route("/marketplace") {
+internal fun Route.marketplaceRoutes() = route("/marketplace") {
     getMarketplaceItems()
-    route("/:id") {
+    route("/{id}") {
         getMarketplaceItem()
         route("/revisions") {
             getMarketplaceItemRevisions()

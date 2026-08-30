@@ -47,6 +47,7 @@ import net.ccbluex.liquidbounce.utils.movement.DirectionalInput;
 import net.ccbluex.liquidbounce.utils.raytracing.EntityRaytracingKt;
 import net.ccbluex.liquidbounce.utils.raytracing.RaytracingKt;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.ClientInput;
@@ -60,7 +61,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -140,9 +141,14 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
     /**
      * Hook entity movement tick event
      */
-    @Inject(method = "aiStep", at = @At("HEAD"))
+    @Inject(method = "aiStep", at = @At("HEAD"), cancellable = true)
     private void hookMovementTickEvent(CallbackInfo callbackInfo) {
-        EventManager.INSTANCE.callEvent(PlayerMovementTickEvent.INSTANCE);
+        var movementTickEvent = new PlayerMovementTickEvent();
+        EventManager.INSTANCE.callEvent(movementTickEvent);
+
+        if (movementTickEvent.isCancelled()) {
+            callbackInfo.cancel();
+        }
     }
 
     /**
@@ -261,11 +267,11 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
         var cameraRotation = new Rotation(camera.getViewYRot(tickDelta), camera.getViewXRot(tickDelta), true);
 
         Rotation rotation;
-        if (RotationManager.INSTANCE.getCurrentRotation() != null) {
-            rotation = RotationManager.INSTANCE.getCurrentRotation();
-        } else if (ModuleFreeCam.INSTANCE.getRunning()) {
+        if (ModuleFreeCam.INSTANCE.getRunning()) {
             var serverRotation = RotationManager.INSTANCE.getServerRotation();
             rotation = ModuleFreeCam.INSTANCE.shouldDisableCameraInteract() ? serverRotation : cameraRotation;
+        } else if (RotationManager.INSTANCE.getCurrentRotation() != null) {
+            rotation = RotationManager.INSTANCE.getCurrentRotation();
         } else {
             rotation = cameraRotation;
         }
@@ -288,7 +294,7 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
             rotation,
             Math.max(blockInteractionRange, entityInteractionRange),
             ClipContext.Block.OUTLINE,
-            ModuleLiquidPlace.INSTANCE.getRunning(),
+            ModuleLiquidPlace.INSTANCE.getRunning() ? ClipContext.Fluid.ANY : ClipContext.Fluid.NONE,
             tickDelta
         );
     }
@@ -458,7 +464,7 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
             true,
             SprintEvent.Source.MOVEMENT_TICK
         );
-    
+
         EventManager.INSTANCE.callEvent(event);
         return !event.getSprint();
     }
@@ -488,8 +494,8 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
         return event.getSprint();
     }
 
-    @WrapWithCondition(method = "clientSideCloseContainer", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Minecraft;setScreen(Lnet/minecraft/client/gui/screens/Screen;)V"))
-    private boolean preventCloseScreen(Minecraft instance, Screen screen) {
+    @WrapWithCondition(method = "clientSideCloseContainer", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/Gui;setScreen(Lnet/minecraft/client/gui/screens/Screen;)V"))
+    private boolean preventCloseScreen(Gui instance, Screen screen) {
         // Prevent closing screen if the current screen is a client screen
         return !ScreenManager.isClientScreen(screen);
     }

@@ -155,9 +155,18 @@ object ModuleScaffold : ClientModule("Scaffold", ModuleCategories.WORLD) {
         ON("On", { blockPos -> blockPos.copy(y = placementY) }),
 
         /**
+         * Places blocks at the same Y level only while the physical jump key is not held
+         */
+        JUMP_KEY("JumpKey", { blockPos ->
+            (if (mc.options.keyJump.isDown) OFF else ON).getTargetedBlockPos(blockPos)
+        }),
+
+        /**
          * Places blocks at the same Y level as the player, but only if the player is not falling
          */
-        FALLING("Falling", { blockPos -> blockPos.copy(y = placementY).takeIf { player.deltaMovement.y < 0.2 } }),
+        FALLING("Falling", { blockPos ->
+            (if (player.deltaMovement.y < 0.2) ON else OFF).getTargetedBlockPos(blockPos)
+        }),
 
         /**
          * Similar to FALLING, but only when a certain velocity is triggered and after
@@ -260,7 +269,7 @@ object ModuleScaffold : ClientModule("Scaffold", ModuleCategories.WORLD) {
      */
     val autoSpeed by boolean("AutoSpeed", false)
 
-    private var ledge by boolean("Ledge", true)
+    private val ledge by boolean("Ledge", true)
 
     private val renderer = tree(PlacementRenderer("Render", true, this, keep = false))
 
@@ -421,7 +430,9 @@ object ModuleScaffold : ClientModule("Scaffold", ModuleCategories.WORLD) {
     }
 
     var currentOptimalLine: Line? = null
+        private set
     var rawInput = DirectionalInput.NONE
+        private set
 
     @Suppress("unused")
     private val handleMovementInput = handler<MovementInputEvent>(
@@ -542,7 +553,7 @@ object ModuleScaffold : ClientModule("Scaffold", ModuleCategories.WORLD) {
             && SimulatePlacementAttempts.clicker.isClickTick
         ) {
             SimulatePlacementAttempts.clicker.click {
-                doPlacement(currentCrosshairTarget!!, suitableHand!!, {
+                doPlacement(currentCrosshairTarget!!, currentRotation, suitableHand!!, {
                     commonPlaceSucceed(currentCrosshairTarget.targetBlockPos)
                     true
                 }, swingMode = swingMode)
@@ -600,7 +611,7 @@ object ModuleScaffold : ClientModule("Scaffold", ModuleCategories.WORLD) {
         // Take the fall off position before placing the block
         val previousFallOffPos = currentOptimalLine?.let { l -> ScaffoldMovementPrediction.getFallOffPositionOnLine(l) }
 
-        doPlacement(currentCrosshairTarget, handToInteractWith, {
+        doPlacement(currentCrosshairTarget, currentRotation, handToInteractWith, {
             commonPlaceSucceed(target.placedBlock)
             currentTarget = null
             wasSuccessful = true
@@ -698,7 +709,8 @@ object ModuleScaffold : ClientModule("Scaffold", ModuleCategories.WORLD) {
                 !canPlaceOnFace
             }
 
-            sameYMode != SameYMode.OFF -> {
+            sameYMode != SameYMode.OFF &&
+                (sameYMode != SameYMode.JUMP_KEY || mc.options.keyJump.isDown) -> {
                 context.clickedPos.y == placementY && (hitResult.direction != Direction.UP || !canPlaceOnFace)
             }
 

@@ -19,6 +19,7 @@
 
 package net.ccbluex.liquidbounce.integration.screen
 
+import com.mojang.blaze3d.platform.InputConstants
 import net.ccbluex.liquidbounce.event.EventListener
 import net.ccbluex.liquidbounce.event.EventManager
 import net.ccbluex.liquidbounce.event.events.BrowserReadyEvent
@@ -44,6 +45,7 @@ import net.ccbluex.liquidbounce.integration.interop.ClientInteropServer
 import net.ccbluex.liquidbounce.integration.screen.impl.CustomSharedMinecraftScreen
 import net.ccbluex.liquidbounce.integration.screen.impl.CustomStandaloneMinecraftScreen
 import net.ccbluex.liquidbounce.integration.screen.impl.InternetExplorerScreen
+import net.ccbluex.liquidbounce.integration.screen.impl.MicrosoftLoginScreen
 import net.ccbluex.liquidbounce.integration.task.TaskProgressScreen
 import net.ccbluex.liquidbounce.integration.theme.Theme
 import net.ccbluex.liquidbounce.integration.theme.ThemeManager
@@ -88,7 +90,7 @@ object ScreenManager : EventListener {
     val screenAcknowledgement = ScreenAcknowledgement()
 
     internal val parent: Screen
-        get() = mc.screen ?: TitleScreen()
+        get() = mc.gui.screen() ?: TitleScreen()
 
     @Suppress("unused")
     private val handleBrowserReady = suspendHandler<BrowserReadyEvent>(
@@ -222,8 +224,8 @@ object ScreenManager : EventListener {
     }
 
     fun restoreOriginalScreen() {
-        if (mc.screen is CustomSharedMinecraftScreen) {
-            mc.setScreen((mc.screen as CustomSharedMinecraftScreen).originalScreen)
+        if (mc.gui.screen() is CustomSharedMinecraftScreen) {
+            mc.gui.setScreen((mc.gui.screen() as CustomSharedMinecraftScreen).originalScreen)
         }
     }
 
@@ -242,7 +244,7 @@ object ScreenManager : EventListener {
 
     @Suppress("unused")
     private val screenUpdater = handler<GameTickEvent> {
-        handleCurrentScreen(mc.screen)
+        handleCurrentScreen(mc.gui.screen())
     }
 
     @Suppress("unused")
@@ -264,7 +266,7 @@ object ScreenManager : EventListener {
 
     @Suppress("unused")
     private val fpsLimitHandler = handler<FpsLimitEvent> { event ->
-        if (this.mainBrowser == null || !browserSettings.syncGameFps || !isClientScreen(mc.screen)) {
+        if (this.mainBrowser == null || !browserSettings.syncGameFps || !isClientScreen(mc.gui.screen())) {
             return@handler
         }
 
@@ -281,7 +283,7 @@ object ScreenManager : EventListener {
         }
 
         // F12 to toggle GPU acceleration
-        if (event.action == GLFW.GLFW_PRESS && keyCode == GLFW.GLFW_KEY_F12) {
+        if (event.isPressed && keyCode == InputConstants.KEY_F12) {
             val backend = BrowserBackendManager.backend ?: return@handler
             if (!backend.accelerationFlags.isSupported) {
                 logger.warn("GPU acceleration is not supported by the current browser backend.")
@@ -295,8 +297,8 @@ object ScreenManager : EventListener {
     }
 
     private fun handleCurrentScreen(screen: Screen?): Boolean {
-        // We check against mc.screen, not screen, because somehow this works.
-        if (mc.screen is TaskProgressScreen) {
+        // We check against mc.gui.screen(), not screen, because somehow this works.
+        if (mc.gui.screen() is TaskProgressScreen) {
             return false
         }
 
@@ -307,7 +309,7 @@ object ScreenManager : EventListener {
                     return false
                 }
 
-                mc.setScreen(original)
+                mc.gui.setScreen(original)
                 true
             } else {
                 closeScreen()
@@ -353,7 +355,7 @@ object ScreenManager : EventListener {
         return when {
             // When we want to fully replace a screen.
             theme.isScreenSupported(name) -> {
-                mc.setScreen(CustomSharedMinecraftScreen(customScreenType, theme, originalScreen = minecraftScreen))
+                mc.gui.setScreen(CustomSharedMinecraftScreen(customScreenType, theme, originalScreen = minecraftScreen))
                 true
             }
             // When we just want to overlay it.
@@ -376,5 +378,6 @@ object ScreenManager : EventListener {
     fun isClientScreen(screen: Screen?) = screen is CustomSharedMinecraftScreen
         || screen is CustomStandaloneMinecraftScreen
         || screen is InternetExplorerScreen
+        || screen is MicrosoftLoginScreen
 
 }

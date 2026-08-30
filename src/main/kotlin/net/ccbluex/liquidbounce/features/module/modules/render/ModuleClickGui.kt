@@ -18,6 +18,7 @@
  */
 package net.ccbluex.liquidbounce.features.module.modules.render
 
+import com.mojang.blaze3d.platform.InputConstants
 import net.ccbluex.liquidbounce.LiquidBounce
 import net.ccbluex.liquidbounce.config.types.group.ToggleableValueGroup
 import net.ccbluex.liquidbounce.event.EventManager
@@ -40,7 +41,6 @@ import net.ccbluex.liquidbounce.integration.screen.impl.CustomStandaloneMinecraf
 import net.ccbluex.liquidbounce.utils.client.inGame
 import net.ccbluex.liquidbounce.utils.kotlin.EventPriorityConvention.OBJECTION_AGAINST_EVERYTHING
 import net.ccbluex.liquidbounce.utils.kotlin.EventPriorityConvention.READ_FINAL_STATE
-import org.lwjgl.glfw.GLFW
 
 /**
  * ClickGUI module
@@ -49,7 +49,7 @@ import org.lwjgl.glfw.GLFW
  */
 
 object ModuleClickGui :
-    ClientModule("ClickGUI", ModuleCategories.RENDER, bind = GLFW.GLFW_KEY_RIGHT_SHIFT, disableActivation = true) {
+    ClientModule("ClickGUI", ModuleCategories.RENDER, bind = InputConstants.KEY_RSHIFT, disableActivation = true) {
 
     override val running get() = true
 
@@ -70,7 +70,7 @@ object ModuleClickGui :
                 return false
             }
 
-            val screen = mc.screen ?: return false
+            val screen = mc.gui.screen() ?: return false
             return screen is CustomSharedMinecraftScreen && screen.screenType == CustomScreenType.CLICK_GUI ||
                 screen is CustomStandaloneMinecraftScreen && screen.screenType == CustomScreenType.CLICK_GUI
         }
@@ -113,7 +113,7 @@ object ModuleClickGui :
 
         updateStandaloneScreen()
         mc.execute {
-            mc.setScreen(standaloneScreen ?: CustomSharedMinecraftScreen(CustomScreenType.CLICK_GUI))
+            mc.gui.setScreen(standaloneScreen ?: CustomSharedMinecraftScreen(CustomScreenType.CLICK_GUI))
         }
         super.onEnabled()
     }
@@ -141,7 +141,7 @@ object ModuleClickGui :
     @Suppress("unused")
     private val tickHandler = handler<GameTickEvent> {
         // For some reason, we actually need this.
-        standaloneScreen?.browser?.visible = mc.screen == standaloneScreen
+        standaloneScreen?.browser?.visible = mc.gui.screen() == standaloneScreen
     }
 
     fun updateStandaloneScreen(): Boolean {
@@ -171,19 +171,19 @@ object ModuleClickGui :
 
     fun invalidate() {
         val standaloneScreen = standaloneScreen ?: return
-        val wasOpen = mc.screen == standaloneScreen
+        val wasOpen = mc.gui.screen() == standaloneScreen
 
         // Close and invalidate old cache
         if (wasOpen) {
-            mc.setScreen(null)
+            mc.gui.setScreen(null)
         }
         standaloneScreen.close()
         this.standaloneScreen = null
-        
+
         // Only bother updating now if it was open before.
         if (wasOpen) {
             updateStandaloneScreen()
-            mc.setScreen(this.standaloneScreen ?: CustomSharedMinecraftScreen(CustomScreenType.CLICK_GUI))
+            mc.gui.setScreen(this.standaloneScreen ?: CustomSharedMinecraftScreen(CustomScreenType.CLICK_GUI))
         }
     }
 

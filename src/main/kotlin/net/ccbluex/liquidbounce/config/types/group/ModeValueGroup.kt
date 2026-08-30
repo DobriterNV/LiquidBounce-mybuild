@@ -20,6 +20,7 @@ package net.ccbluex.liquidbounce.config.types.group
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList
 import net.ccbluex.fastutil.mapToArray
+import net.ccbluex.liquidbounce.config.OptionalInclusion
 import net.ccbluex.liquidbounce.config.gson.stategies.Exclude
 import net.ccbluex.liquidbounce.config.gson.stategies.ProtocolExclude
 import net.ccbluex.liquidbounce.config.types.ValueType
@@ -33,7 +34,7 @@ import java.util.function.ToIntFunction
  * Allows configuring and manage modes
  */
 class ModeValueGroup<T : Mode>(
-    @Exclude @ProtocolExclude val eventListener: EventListener,
+    @Exclude @ProtocolExclude val eventListener: EventListener?,
     name: String,
     activeModeIndexCallback: ToIntFunction<List<T>>,
     modesCallback: (ModeValueGroup<T>) -> Array<T>
@@ -95,6 +96,14 @@ class ModeValueGroup<T : Mode>(
 
     override fun restore() {
         this.setAndUpdate(defaultMode)
+    }
+
+    override fun inclusionGroup(group: OptionalInclusion) = apply {
+        super.inclusionGroup(group)
+
+        for (m in modes) {
+            m.inclusionGroup(group)
+        }
     }
 
     @ScriptApiRequired

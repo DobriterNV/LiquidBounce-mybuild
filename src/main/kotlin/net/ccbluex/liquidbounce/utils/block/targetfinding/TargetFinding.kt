@@ -29,6 +29,7 @@ import net.ccbluex.liquidbounce.utils.client.mc
 import net.ccbluex.liquidbounce.utils.client.player
 import net.ccbluex.liquidbounce.utils.client.world
 import net.ccbluex.liquidbounce.utils.inventory.HotbarItemSlot
+import net.ccbluex.liquidbounce.utils.math.center
 import net.ccbluex.liquidbounce.utils.math.centerOnSide
 import net.ccbluex.liquidbounce.utils.math.distanceToSqr
 import net.ccbluex.liquidbounce.utils.math.geometry.AlignedFace
@@ -217,7 +218,7 @@ private fun findBestTargetPlanForTargetPosition(
     return options.minByOrNull {
         val targetRotation = Rotation.lookingAt(point = it.targetPositionOnBlock, from = playerEyePositionOnPlacement)
 
-        currentRotation.angleTo(targetRotation)
+        currentRotation.rotationDeltaLengthTo(targetRotation)
     }
 }
 
@@ -299,8 +300,9 @@ fun findBestBlockPlacementTarget(pos: BlockPos, options: BlockPlacementTargetFin
         // to rotate to
         val pointOnFace = findTargetPointOnFace(currPos.stateOrEmpty, currPos, targetPlan, options) ?: continue
 
+        val interactionPoint = pointOnFace.point + currPos
         val rotation = Rotation.lookingAt(
-            point = pointOnFace.point + currPos,
+            point = interactionPoint,
             from = options.playerLocationOnPlacement.eyePos,
         )
 
@@ -308,6 +310,7 @@ fun findBestBlockPlacementTarget(pos: BlockPos, options: BlockPlacementTargetFin
             currPos,
             posToInvestigate,
             pointOnFace.side,
+            interactionPoint,
             pointOnFace.face.from.y + currPos.y,
             rotation
         )
@@ -364,6 +367,10 @@ data class BlockPlacementTarget(
     val placedBlock: BlockPos,
     val direction: Direction,
     /**
+     * Exact point on [interactedBlockPos] selected by target finding.
+     */
+    val interactionPoint: Vec3,
+    /**
      * Some blocks must be placed above a certain height of the block. For example stairs and slabs must be placed
      * at the upper half (=> minY = 0.5) in order to be placed correctly
      */
@@ -373,7 +380,7 @@ data class BlockPlacementTarget(
 
     val blockHitResult: BlockHitResult
         get() = BlockHitResult(
-            interactedBlockPos.center,
+            interactionPoint,
             direction,
             interactedBlockPos,
             false

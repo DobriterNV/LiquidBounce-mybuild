@@ -26,8 +26,10 @@ import net.ccbluex.liquidbounce.features.module.MinecraftShortcuts
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.player.RemotePlayer
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket
+import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.effect.MobEffectInstance
 import net.minecraft.world.effect.MobEffects
+import net.minecraft.world.entity.EntityEvent
 import java.util.function.Consumer
 
 /**
@@ -82,7 +84,7 @@ open class FakePlayer @JvmOverloads constructor(
             addEffect(MobEffectInstance(MobEffects.FIRE_RESISTANCE, 800, 0))
             setHealth(1.0f)
 
-            val packet = ClientboundEntityEventPacket(this, 35.toByte())
+            val packet = ClientboundEntityEventPacket(this, EntityEvent.PROTECTED_FROM_DEATH)
             val event = PacketEvent(TransferOrigin.INCOMING, packet, true)
             callEvent(event)
             if (!event.isCancelled) {
@@ -110,7 +112,8 @@ open class FakePlayer @JvmOverloads constructor(
      * The fake player takes no knockback.
      */
     // this could perhaps be an option, but it could conflict with the recording
-    override fun knockback(strength: Double, x: Double, z: Double) {
+    override fun knockback(power: Double, xd: Double, zd: Double,
+                           source: DamageSource, damage: Float, comesFromEffect: Boolean) {
         /* nope */
     }
 
